@@ -13,7 +13,7 @@ TBTEST_DIR=$(dirname $0)
 
 AUTORESUME_DELAY_SEC=20		# delay after a suspend until system is autoresumed
 CYCLE_DELAY_SEC=20		# delay after resume until the next suspend/resume cycle
-
+MAX_PING_DURATION_SEC=30        # maximum duration while waiting for a responsive network connection
 PROGRESS_PRINT_INTERVAL=20	# number of cycles after a progress indication is printed
 
 MAX_TEST_CMD_RETRY_ATTEMPTS=10	# max number test commands are retried, in case they need this
@@ -37,13 +37,70 @@ adapters_got_detected=false
 stop_test=false
 skip_test=false
 reload_network=false
+wait_network_connection=false
+
+NMAP=
+PING=
+
+declare -r NMAP_STATUS_UP_REGEX="\bStatus: Up\b"
+
+ping_tool=
+ping_options=
 
 max_cycles=0			# Number of test cycles, until interrupted if 0
 
+setup_server_ping_tool()
+{
+	local ip_address
+	local ip_host
+	local ip_port
+	local nmap_output
+
+	ip_address=$(get_ssh_server_address) || return 1
+
+	ip_host=${ip_address%:*}
+	ip_port=${ip_address#*:}
+
+	if NMAP=$(which nmap); then
+		ping_tool=$NMAP
+		ping_options="--host-timeout 1 -oG - -p $ip_port $ip_host"
+
+		nmap_output=$($ping_tool $ping_options 2>&1)
+		if [[ $? -ne 0 ]] || [[ ! "$nmap_output" =~ $NMAP_STATUS_UP_REGEX ]]; then
+			ping_tool=""
+			ping_options=""
+		fi
+	fi
+
+	[ -n "$ping_tool" ] && return 0
+
+	PING=$(which ping)
+	if [ -z "$PING" ]; then
+		pr_err "Neither nmap or ping is available"
+		return 1
+	fi
+
+	ping_tool=$PING
+	ping_options="-c 1 -w 1 $ip_host"
+
+	ping_output=$($ping_tool $ping_options 2>&1)
+	if [ $? -ne 0 ]; then
+		pr_err "Couldn't ping the $ip_host address:\n$ping_output"
+		return 0
+	fi
+}
+
+setup_server_ping()
+{
+	setup_server_ping_tool && return 0
+
+	err_exit "Couldn't setup a ping tool required for a responsive network connection"
+}
+
 parse_options()
 {
-        OPTIONS="c:sh"
-        LONGOPTIONS="cycles:,reload-network-module,skip-test,help"
+        OPTIONS="c:swh"
+        LONGOPTIONS="cycles:,reload-network-module,skip-test,wait-network-connection,help"
 
         # Using getopt to store the parsed options and arguments into $PARSED
         PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTIONS --name "$(basename $0)" -- "$@")
@@ -62,6 +119,7 @@ OPTIONS:
         -c, --cycles <number-of-cycles>  Number of test cycles. By default test until interrupted.
         --reload-network-module          rmmod/modprobe network module across suspend/resume.
         -s, --skip-test                  Perform only the initialization steps, skip the actual test.
+        -w, --wait-network-connection    Wait for responsive network connection after each cycle.
         -h, --help                       Print this help.
 "
 
@@ -80,6 +138,9 @@ OPTIONS:
                 --reload-network-module)
                         reload_network=true
                         ;;
+		-w|--wait-network-connection)
+			wait_network_connection=true
+			;;
 		-h|--help)
 			echo "$usg"
 			exit
@@ -113,6 +174,14 @@ OPTIONS:
 		if ! lsmod | grep "^\<$NETWORK_MODULE\>" > /dev/null ; then
 			err_exit "The \"$NETWORK_MODULE\" network module is not loaded"
 		fi
+	fi
+
+	if $wait_network_connection; then
+		if $skip_test; then
+			err_exit "Can't specify both --skip-test and --wait-network-connection"
+		fi
+
+		setup_server_ping
 	fi
 }
 
@@ -336,10 +405,50 @@ test_suspend_resume()
 	return 0
 }
 
+wait_network_connection()
+{
+	local wait_expires
+	local ping_output
+	local err
+
+	[ -z "$ping_tool" ] && return
+
+	wait_expires=$(( $(date +%s) + MAX_PING_DURATION_SEC ))
+
+	while ! $stop_test && [ $(date +%s) -lt $wait_expires ]; do
+		err=0
+		ping_output=$($ping_tool $ping_options 2>&1) || err=$?
+
+		if [ "$(basename "$ping_tool")" = "ping" ]; then
+			if [ $err -eq 0 ]; then
+			       break
+			fi
+			if [ $err -eq 2 ]; then
+				sleep 1
+			fi
+		else
+			if [[ $err -eq 0 ]] && [[ "$ping_output" =~ $NMAP_STATUS_UP_REGEX ]]; then
+				break
+			fi
+			sleep 1
+		fi
+	done
+}
+
+delay_next_cycle()
+{
+	$stop_test && return
+
+	wait_network_connection
+
+	$stop_test || sleep $CYCLE_DELAY_SEC
+}
+
 run_test()
 {
 	local start=$(get_uptime_sec)
 	local error_count=0
+	local start_wait
 	local cycle=0
 	local err
 
@@ -372,8 +481,8 @@ run_test()
 			fi
 		fi
 
-		if ! $stop_test; then
-		       	sleep $CYCLE_DELAY_SEC || true
+		if [ $max_cycles -eq 0 -o $cycle -lt $max_cycles ]; then
+			delay_next_cycle
 		fi
 	done
 

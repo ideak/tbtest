@@ -307,6 +307,44 @@ log_success_fail()
 	fi
 }
 
+get_ssh_server_address()
+{
+	local ip_address
+	local ip_octet
+	local ip_port
+	local i
+	local -r address_regex="^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3}) ([0-9]{1,6})\b"
+
+	if ! [ -v SSH_CONNECTION ]; then
+		pr_err "The SSH_CONNECTION environment variable is not set."
+		return 1
+	fi
+
+	if ! [[ $SSH_CONNECTION =~ $address_regex ]]; then
+		pr_err "Malformed IP address/port in SSH_CONNECTION variable"
+		return 1
+	fi
+
+	for ((i=1; i<=4; i++)); do
+		ip_octet=${BASH_REMATCH[i]}
+
+		if [[ $ip_octet -gt 255 ]]; then
+			pr_err "Invalid IP address octet \"$ip_octet\" in SSH_CONNECTION variable"
+			return 1
+		fi
+
+		ip_address+="${ip_address:+.}$ip_octet"
+	done
+
+	ip_port=${BASH_REMATCH[5]}
+	if [ $ip_port -lt 1024 ]; then
+		pr_err "Invalid SSH client IP port \"$ip_port\""
+		return 1
+	fi
+
+	echo "$ip_address:$ip_port"
+}
+
 cache_sudo_right()
 {
 	sudo true || return $?
