@@ -35,12 +35,13 @@ dry_run=false
 adapters_got_detected=false
 
 stop_test=false
+skip_test=false
 reload_network=false
 
 parse_options()
 {
-        OPTIONS="h"
-        LONGOPTIONS="reload-network-module,help"
+        OPTIONS="sh"
+        LONGOPTIONS="reload-network-module,skip-test,help"
 
         # Using getopt to store the parsed options and arguments into $PARSED
         PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTIONS --name "$(basename $0)" -- "$@")
@@ -57,11 +58,15 @@ parse_options()
 "Usage: $(basename $0) [OPTIONS]
 OPTIONS:
         --reload-network-module          rmmod/modprobe network module across suspend/resume
+	-s, --skip-test                  perform only the initialization steps, skip the actual test
         -h, --help                       print this help
 "
 
         while true; do
                 case "$1" in
+		-s|--skip-test)
+			skip_test=true
+			;;
                 --reload-network-module)
                         reload_network=true
                         ;;
@@ -328,6 +333,11 @@ run_test()
 	if ! check_state; then
 		log_err "Initial state check failed, abort"
 		return 1
+	fi
+
+	if $skip_test; then
+		log "Init complete, skip test as requested"
+		return 0
 	fi
 
 	log "Test started"
