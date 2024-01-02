@@ -248,27 +248,27 @@ init_dp_in_adapters()
 
 get_dpme()
 {
-	local -nr __gd_adapter=$1
-	local __gd_dpme
-	local __gd_err
+	local -nr adapter=$1
+	local dpme
+	local err
 
-	__gd_dpme=$(test_cmd $SUDO $TBGET \
-		-d "${__gd_adapter[$DR_DOMAIN]}" \
-		-r "${__gd_adapter[$DR_ROUTE]}" \
-		-a "${__gd_adapter[$ADP_ID]}" \
+	dpme=$(test_cmd $SUDO $TBGET \
+		-d "${adapter[$DR_DOMAIN]}" \
+		-r "${adapter[$DR_ROUTE]}" \
+		-a "${adapter[$ADP_ID]}" \
 		ADP_DP_CS_8.DPME)
-	__gd_err=$?
+	err=$?
 
-	$dry_run && __gd_dpme=0x1
+	$dry_run && dpme=0x1
 
-	if [ "$__gd_dpme" != 0x0 -a "$__gd_dpme" != 0x1 ]; then
-		log_err "Invalid DPME state: \"$__gd_dpme\""
-		__gd_err=1
+	if [ "$dpme" != 0x0 -a "$dpme" != 0x1 ]; then
+		log_err "Invalid DPME state: \"$dpme\""
+		err=1
 	fi
 
-	echo "$__gd_dpme"
+	echo "$dpme"
 
-	return $__gd_err
+	return $err
 }
 
 check_dpme_for_adapters()
