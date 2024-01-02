@@ -269,7 +269,7 @@ suspend_and_autoresume()
 	local ret=0
 
 	if $reload_network; then
-		test_cmd_no_out $SUDO $RMMOD e1000e || ret=$?
+		test_cmd_no_out $SUDO $RMMOD "$NETWORK_MODULE" || ret=$?
 	fi
 
 	if [ $ret -eq 0 ]; then
@@ -278,7 +278,7 @@ suspend_and_autoresume()
 
 	if $reload_network; then
 		# retry modprobe a few times if it gets interrupted
-		test_cmd_retry_no_out $SUDO $MODPROBE e1000e || ret=$?
+		test_cmd_retry_no_out $SUDO $MODPROBE "$NETWORK_MODULE" || ret=$?
 	fi
 
 	return $ret
