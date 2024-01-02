@@ -38,10 +38,12 @@ stop_test=false
 skip_test=false
 reload_network=false
 
+max_cycles=0			# Number of test cycles, until interrupted if 0
+
 parse_options()
 {
-        OPTIONS="sh"
-        LONGOPTIONS="reload-network-module,skip-test,help"
+        OPTIONS="c:sh"
+        LONGOPTIONS="cycles:,reload-network-module,skip-test,help"
 
         # Using getopt to store the parsed options and arguments into $PARSED
         PARSED=$(getopt --options=$OPTIONS --longoptions=$LONGOPTIONS --name "$(basename $0)" -- "$@")
@@ -57,13 +59,21 @@ parse_options()
         usg=\
 "Usage: $(basename $0) [OPTIONS]
 OPTIONS:
-        --reload-network-module          rmmod/modprobe network module across suspend/resume
-	-s, --skip-test                  perform only the initialization steps, skip the actual test
-        -h, --help                       print this help
+        -c, --cycles <number-of-cycles>  Number of test cycles. By default test until interrupted.
+        --reload-network-module          rmmod/modprobe network module across suspend/resume.
+        -s, --skip-test                  Perform only the initialization steps, skip the actual test.
+        -h, --help                       Print this help.
 "
 
         while true; do
                 case "$1" in
+		-c|--cycles)
+			valid_number "$2" || err_exit "Invalid test cycle count \"$2\""
+			[ $2 -gt 0 ] || err_exit "The test cycle count must be at least 1"
+			max_cycles=$2
+
+			shift
+			;;
 		-s|--skip-test)
 			skip_test=true
 			;;
@@ -88,6 +98,10 @@ OPTIONS:
         if [ $# -gt 0 ]; then
                 err_exit "unexpected arguments \"$@\"\n$usg"
         fi
+
+	if $skip_test && [ $max_cycles -ne 0 ]; then
+		err_exit "Can't specify both --skip-test and --cycles"
+	fi
 
 	if $reload_network; then
 		if [[ ! -v NETWORK_MODULE ]]; then
@@ -342,7 +356,7 @@ run_test()
 
 	log "Test started"
 
-	while ! $stop_test; do
+	while ! $stop_test && [ $max_cycles -eq 0 -o $cycle -lt $max_cycles ]; do
 		cycle=$(( cycle + 1 ))
 
 		err=0
