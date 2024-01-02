@@ -380,7 +380,7 @@ load_modules()
 
 		log_cont "Loading module $module:"
 
-		loaded_mod=$(test_cmd grep_no_err "\<i915\>" <<< "$mod_list") || return 1
+		loaded_mod=$(test_cmd grep_no_err "\<$module\>" <<< "$mod_list") || return 1
 
 		if [ -n "$loaded_mod" ]; then
 			log_no_prefix " Already loaded"
