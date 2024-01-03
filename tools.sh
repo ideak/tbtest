@@ -4,7 +4,7 @@ TBTOOLS_BIN_DIR=$TBTOOLS_DIR/target/release
 declare -ra tools=(
 	$TBTOOLS_BIN_DIR:TBGET,TBADAPTERS,TBLIST
 	$HOME/bin:DMESG
-	"":RM,MKTEMP,GREP,SUDO,RTCWAKE,LSMOD,MODPROBE,RMMOD
+	"":RM,MKTEMP,GREP,RTCWAKE,LSMOD,MODPROBE,RMMOD
 )
 
 tool_cmd()
@@ -62,6 +62,20 @@ assign_tool()
 	find_and_assign_tool "$tool_varname"
 }
 
+init_sudo()
+{
+	if [ "$(id -u)" -eq 0 ]; then
+		SUDO=""
+		return 0
+	fi
+
+	assign_tool SUDO "" && return 0
+
+	pr_err "Cannot find tool sudo"
+
+	return 1
+}
+
 init_tools()
 {
 	local tool_desc
@@ -70,6 +84,8 @@ init_tools()
 	local custom_dir
 	local -a tool_varnames
 	local tool_varname
+
+	init_sudo || return 1
 
 	for tool_desc in "${tools[@]}"; do
 		custom_dir=${tool_desc%%:*}

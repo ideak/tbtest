@@ -351,7 +351,11 @@ get_ssh_server_address()
 
 cache_sudo_right()
 {
-	sudo true || return $?
+	[ "$(id -u)" -eq 0 ] && return 0
+
+	[[ -v SUDO ]] || err_exit "SUDO tool is not initialized"
+
+	$SUDO true || return $?
 }
 
 init_utils()
